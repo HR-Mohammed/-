@@ -156,45 +156,133 @@ export const Dashboard: React.FC<DashboardProps> = ({ onView, overdueDocs = [] }
       )}
 
       {/* Bantu Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         {stats.map((stat, idx) => {
+          let subText = "";
+          let percentage = 0;
+          if (totalDocuments > 0) {
+            percentage = Math.round((stat.value / totalDocuments) * 100);
+          }
+          
+          if (stat.label === 'إجمالي الكتب') {
+            const pct = totalDocuments > 0 ? Math.round((completedCount / totalDocuments) * 100) : 0;
+            subText = `منها ${pct}% منجز بالكامل`;
+          } else if (stat.label === 'الكتب المنجزة') {
+            subText = `نسبة الإنجاز العامة ${percentage}%`;
+          } else if (stat.label === 'وارد') {
+            subText = `${percentage}% من المعاملات`;
+          } else if (stat.label === 'صادر') {
+            subText = `${percentage}% من المعاملات`;
+          } else if (stat.label === 'قيد المتابعة') {
+            subText = `${percentage}% تحت المتابعة`;
+          }
+
+          const cardDesigns: Record<string, { gradient: string; glow: string; border: string; badge: string; dotsColor: string }> = {
+            'إجمالي الكتب': {
+              gradient: "from-blue-500/10 via-blue-500/5 to-transparent hover:from-blue-500/15 dark:from-blue-500/15 dark:via-blue-500/5",
+              glow: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
+              border: "border-blue-100/50 dark:border-blue-900/30",
+              badge: "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-100/30 dark:border-blue-900/40",
+              dotsColor: "bg-blue-550 dark:bg-blue-400"
+            },
+            'وارد': {
+              gradient: "from-indigo-500/10 via-indigo-500/5 to-transparent hover:from-indigo-500/15 dark:from-indigo-500/15 dark:via-indigo-500/5",
+              glow: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400",
+              border: "border-indigo-100/50 dark:border-indigo-900/30",
+              badge: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-100/30 dark:border-indigo-900/40",
+              dotsColor: "bg-indigo-550 dark:bg-indigo-400"
+            },
+            'صادر': {
+              gradient: "from-orange-500/10 via-orange-500/5 to-transparent hover:from-orange-500/15 dark:from-orange-500/15 dark:via-orange-500/5",
+              glow: "bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400",
+              border: "border-orange-100/50 dark:border-orange-900/30",
+              badge: "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border-orange-100/30 dark:border-orange-900/40",
+              dotsColor: "bg-orange-550 dark:bg-orange-400"
+            },
+            'الكتب المنجزة': {
+              gradient: "from-emerald-500/10 via-emerald-500/5 to-transparent hover:from-emerald-500/15 dark:from-emerald-500/15 dark:via-emerald-500/5",
+              glow: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+              border: "border-emerald-100/50 dark:border-emerald-900/30",
+              badge: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-100/30 dark:border-emerald-900/40",
+              dotsColor: "bg-emerald-555 dark:bg-emerald-400"
+            },
+            'قيد المتابعة': {
+              gradient: "from-purple-500/10 via-purple-500/5 to-transparent hover:from-purple-500/15 dark:from-purple-500/15 dark:via-purple-500/5",
+              glow: "bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400",
+              border: "border-purple-100/50 dark:border-purple-900/30",
+              badge: "bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border-purple-100/30 dark:border-purple-900/40",
+              dotsColor: "bg-purple-550 dark:bg-purple-400"
+            }
+          };
+
+          const design = cardDesigns[stat.label] || {
+            gradient: "from-slate-550/10 via-slate-550/5 to-transparent",
+            glow: "bg-slate-50 text-slate-600 dark:bg-slate-950/40 dark:text-slate-400",
+            border: "border-slate-100/50 dark:border-slate-900/30",
+            badge: "bg-slate-50 dark:bg-slate-950/40 text-slate-600 dark:text-slate-400 border-slate-100/30 dark:border-slate-900/40",
+            dotsColor: "bg-slate-500"
+          };
+
           return (
             <motion.div
               key={idx}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.08 }}
-              whileHover={{ y: -6, transition: { duration: 0.2 } }}
+              whileHover={{ 
+                y: -6, 
+                transition: { duration: 0.2, ease: "easeOut" } 
+              }}
               className={cn(
-                "glass-panel p-6 rounded-[2.25rem] flex flex-col justify-between h-44 group cursor-default border shadow-md relative overflow-hidden",
-                stat.label.includes('إجمالي') && "bg-gradient-to-b from-white via-white to-slate-100/55 dark:from-slate-900/80 dark:to-slate-900/40 border-slate-200/50 dark:border-white/5",
-                stat.label.includes('وارد') && "bg-gradient-to-b from-white via-white to-blue-50/20 dark:from-slate-900/80 dark:to-blue-950/5 border-blue-100/30 dark:border-blue-900/20",
-                stat.label.includes('صادر') && "bg-gradient-to-b from-white via-white to-orange-50/20 dark:from-slate-900/80 dark:to-orange-950/5 border-orange-100/30 dark:border-orange-900/20",
-                stat.label.includes('منجز') && "bg-gradient-to-b from-white via-white to-emerald-50/20 dark:from-slate-900/80 dark:to-emerald-950/5 border-emerald-100/30 dark:border-emerald-900/20",
-                stat.label.includes('متابعة') && "bg-gradient-to-b from-white via-white to-purple-50/20 dark:from-slate-900/80 dark:to-purple-950/5 border-purple-100/30 dark:border-purple-900/20"
+                "relative group overflow-hidden rounded-[2.25rem] p-6 border transition-all duration-305 flex flex-col justify-between h-48 cursor-default",
+                "bg-white/90 dark:bg-slate-900/80 backdrop-blur-md shadow-md hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-700",
+                design.border
               )}
             >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-b from-white/10 to-transparent rounded-full pointer-events-none" />
-              <div className="flex justify-between items-start">
+              {/* Ambient Glowing Aura Accent */}
+              <div className={cn(
+                "absolute -top-12 -right-12 w-32 h-32 rounded-full blur-2xl opacity-40 transition-opacity group-hover:opacity-65 pointer-events-none bg-gradient-to-br",
+                design.gradient
+              )} />
+              
+              {/* Header block */}
+              <div className="flex justify-between items-start relative z-10 w-full">
                 <div className={cn(
-                  "p-3 rounded-2xl shadow-inner transition-transform group-hover:scale-110", 
-                  stat.bg,
-                  stat.bg.includes('blue') && 'dark:bg-blue-500/10 text-blue-650',
-                  stat.bg.includes('indigo') && 'dark:bg-indigo-500/10 text-indigo-650',
-                  stat.bg.includes('orange') && 'dark:bg-orange-500/10 text-orange-650',
-                  stat.bg.includes('emerald') && 'dark:bg-emerald-500/10 text-emerald-650',
-                  stat.bg.includes('purple') && 'dark:bg-purple-500/10 text-purple-650'
+                  "p-3 rounded-2xl shadow-sm transition-transform duration-300 group-hover:scale-110", 
+                  design.glow
                 )}>
                   <stat.icon className="w-5 h-5" />
                 </div>
-                <span className="relative flex h-1.5 w-1.5 mt-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500 opacity-50"></span>
+                
+                {/* Modern subtle pulse indicator */}
+                <span className="relative flex h-2 w-2 mt-2">
+                  <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", design.dotsColor)} />
+                  <span className={cn("relative inline-flex rounded-full h-2 w-2", design.dotsColor)} />
                 </span>
               </div>
-              <div className="mt-4">
-                <p className="text-3xl font-black text-slate-950 dark:text-white tracking-tight">{stat.value}</p>
-                <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 tracking-wider mt-1.5 uppercase">{stat.label}</p>
+
+              {/* Main Content Info */}
+              <div className="mt-4 relative z-10">
+                <p className="text-3xl font-black text-slate-950 dark:text-white tracking-tight transform transition-transform group-hover:translate-x-1 duration-300">
+                  {stat.value}
+                </p>
+                <p className="text-xs font-black text-slate-500 dark:text-slate-400 tracking-wider mt-1 uppercase">
+                  {stat.label}
+                </p>
+              </div>
+
+              {/* Footer Badge/Detail Block */}
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between relative z-10">
+                <span className={cn(
+                  "px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all duration-300 group-hover:bg-opacity-90",
+                  design.badge
+                )}>
+                  {subText}
+                </span>
+
+                <div className="text-slate-300 dark:text-slate-700 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition-colors">
+                  <ArrowUpRight className="w-4 h-4 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
+                </div>
               </div>
             </motion.div>
           );
