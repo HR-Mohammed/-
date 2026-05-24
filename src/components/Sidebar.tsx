@@ -167,9 +167,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-1 pt-4 border-t border-slate-100 dark:border-slate-800/60 relative z-10 mt-6">
           {userRole === 'ADMIN' && (
             <button 
+              onClick={() => setCurrentView('system-settings')}
               className={cn(
-                "w-full flex items-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white transition-all group",
-                isCollapsed ? "lg:px-0 lg:justify-center lg:gap-0 h-10" : "px-5 py-3.5 gap-4"
+                "w-full flex items-center rounded-xl transition-all group",
+                isCollapsed ? "lg:px-0 lg:justify-center lg:gap-0 h-10" : "px-5 py-3.5 gap-4",
+                currentView === 'system-settings'
+                  ? "bg-gradient-to-r from-slate-950 to-slate-900 dark:from-indigo-600 dark:to-indigo-500 text-white shadow-xl shadow-indigo-600/20 dark:shadow-indigo-500/30 translate-x-[-2px]"
+                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-white/5 hover:text-slate-950 dark:hover:text-white"
               )}
               title={isCollapsed ? "إعدادات النظام" : undefined}
             >

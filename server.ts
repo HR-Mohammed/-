@@ -165,6 +165,129 @@ app.post("/api/admin/update-password", async (req, res) => {
   }
 });
 
+app.post("/api/mail/delete", async (req, res) => {
+  const { messageId, userId, userRole } = req.body;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: "الرجاء إضافة SUPABASE_SERVICE_ROLE_KEY في المتغيرات البيئية للمشروع لتفعيل الحذف" });
+  }
+
+  try {
+    const adminSupabase = createClient(process.env.VITE_SUPABASE_URL || "", serviceRoleKey);
+    
+    // Safety check: Is the user an admin, or the sender, or from the receiving department?
+    const { data: message, error: fetchError } = await adminSupabase
+      .from('mail_messages')
+      .select('*')
+      .eq('id', messageId)
+      .single();
+
+    if (fetchError || !message) {
+      return res.status(404).json({ error: "الرسالة غير موجودة" });
+    }
+
+    let canDelete = false;
+    if (userRole === 'ADMIN') {
+      canDelete = true;
+    } else {
+      if (message.sender_id === userId) {
+        canDelete = true;
+      } else {
+        const { data: profile } = await adminSupabase
+          .from('profiles')
+          .select('department_id')
+          .eq('id', userId)
+          .single();
+
+        if (profile && profile.department_id === message.receiver_dept_id) {
+          canDelete = true;
+        }
+      }
+    }
+
+    if (!canDelete) {
+      return res.status(403).json({ error: "ليس لديك صلاحية لحذف هذه الرسالة" });
+    }
+
+    // Perform delete
+    const { error: deleteError } = await adminSupabase
+      .from('mail_messages')
+      .delete()
+      .eq('id', messageId);
+
+    if (deleteError) {
+      return res.status(400).json({ error: deleteError.message });
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/clear-mail-messages", async (req, res) => {
+  const { clearType, startDate, endDate, adminUserId } = req.body;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: "الرجاء إضافة SUPABASE_SERVICE_ROLE_KEY في المتغيرات البيئية للمشروع لتفعيل تصفير الرسائل" });
+  }
+
+  if (!adminUserId) {
+    return res.status(401).json({ error: "المستخدم غير معرّف" });
+  }
+
+  try {
+    const adminSupabase = createClient(process.env.VITE_SUPABASE_URL || "", serviceRoleKey);
+    
+    // Validate role from database to prevent spoofing
+    const { data: profile, error: profileError } = await adminSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', adminUserId)
+      .single();
+
+    if (profileError || !profile || profile.role !== 'ADMIN') {
+      return res.status(403).json({ error: "غير مصرح لك بإجراء هذه العملية. هذه الصلاحية للمشرفين فقط." });
+    }
+
+    let query = adminSupabase.from('mail_messages').delete();
+
+    if (clearType === 'period') {
+      if (!startDate && !endDate) {
+        return res.status(400).json({ error: "الرجاء تحديد تاريخ لبداية أو نهاية الفترة المطلوب تصفيرها" });
+      }
+
+      if (startDate) {
+        // We set the start date to the beginning of the day (00:00:00)
+        const startIso = new Date(startDate);
+        startIso.setHours(0, 0, 0, 0);
+        query = query.gte('created_at', startIso.toISOString());
+      }
+      if (endDate) {
+        // We set the end date to the end of the day (23:59:59.999) to cover all messages sent on that day
+        const endIso = new Date(endDate);
+        endIso.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endIso.toISOString());
+      }
+    } else {
+      // clearType === 'all'
+      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+    }
+
+    const { error: deleteError, count } = await query;
+
+    if (deleteError) {
+      return res.status(400).json({ error: deleteError.message });
+    }
+
+    res.json({ success: true, message: "تم تصفير رسائل البريد بنجاح" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function startServer() {
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error(err);

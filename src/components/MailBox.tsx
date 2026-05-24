@@ -2,17 +2,56 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDocuments } from '../context/DocumentContext';
 import { supabase } from '../lib/supabase';
 import { MailMessage, DocumentAttachment } from '../types';
-import { Mail, Send, Inbox, PenSquare, ArrowRight, UserCircle, Building2, Clock, CheckCircle2, MailOpen, Paperclip, X as XIcon, File, Image as ImageIcon, FileText, FileArchive, Upload, HardDrive, Trash2, Forward } from 'lucide-react';
+import { Mail, Send, Inbox, PenSquare, ArrowRight, UserCircle, Building2, Clock, CheckCircle2, MailOpen, Paperclip, X as XIcon, File, Image as ImageIcon, FileText, FileArchive, Upload, HardDrive, Trash2, Forward, Settings } from 'lucide-react';
 import { cn, formatDateTime, formatFileSize } from '../lib/utils';
 
 export const MailBox: React.FC = () => {
-  const { userProfile, internalDepartments, uploadFileToDrive, uploadFile, isGoogleDriveConnected } = useDocuments();
+  const { userProfile, internalDepartments, uploadFileToDrive, uploadFile, isGoogleDriveConnected, globalMailReceiptMode, toggleGlobalMailReceiptMode } = useDocuments();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'inbox' | 'sent' | 'compose'>('inbox');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'sent' | 'compose' | 'settings'>('inbox');
   const [messages, setMessages] = useState<MailMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<MailMessage | null>(null);
+
+  // Mail receipt optional mode state
+  const [mailReceiptMode, setMailReceiptMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('mail_receipt_mode');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const finalReceiptMode = globalMailReceiptMode || mailReceiptMode;
+
+  // Track locally received message IDs in state
+  const [receivedMessages, setReceivedMessages] = useState<Record<string, boolean>>(() => {
+    try {
+      const keys = Object.keys(localStorage);
+      const acc: Record<string, boolean> = {};
+      keys.forEach(key => {
+        if (key.startsWith('received_')) {
+          const id = key.replace('received_', '');
+          acc[id] = localStorage.getItem(key) === 'true';
+        }
+      });
+      return acc;
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mail_receipt_mode', String(mailReceiptMode));
+    } catch (e) {
+      console.warn('Failed to save setting to localStorage', e);
+    }
+  }, [mailReceiptMode]);
+
+  const [togglingGlobal, setTogglingGlobal] = useState(false);
 
   // Compose State
   const [composeTo, setComposeTo] = useState('');
@@ -122,7 +161,39 @@ export const MailBox: React.FC = () => {
     }
   };
 
+  const handleAcknowledgeReceipt = async (e: React.MouseEvent, msgId: string) => {
+    e.stopPropagation();
+    try {
+      localStorage.setItem(`received_${msgId}`, 'true');
+      setReceivedMessages(prev => ({ ...prev, [msgId]: true }));
+      try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3');
+        audio.volume = 0.4;
+        await audio.play();
+      } catch {}
+      alert('تم استلام البريد بنجاح! يمكنك الآن النقر على الرسالة لقراءة المحتوى.');
+    } catch (err) {
+      console.error('Error receiving mail:', err);
+    }
+  };
+
   const handleViewMessage = async (msg: MailMessage) => {
+    // If mail receipt mode is active and we haven't clicked "Receive Mail", block and prompt
+    if (activeTab === 'inbox' && finalReceiptMode && !msg.is_read && !receivedMessages[msg.id]) {
+      const isSystemMandatory = globalMailReceiptMode;
+      const promptMsg = isSystemMandatory 
+        ? '⚠️ تم تفعيل نظام الاستلام الإلزامي للبريد من قِبل إدارة النظام.\n\nلقراءة محتوى هذه الرسالة، يجب تأكيد استلام البريد أولاً.\nالرجاء الضغط على "موافق" لتأكيد الاستلام الرسمي للبريد.'
+        : '⚠️ لفتح هذه الرسالة وقراءتها، يجب تأكيد استلام البريد أولاً.\n\nهل تود تأكيد استلام هذا البريد الآن لفتح محتواه؟';
+        
+      const confirmReceipt = window.confirm(promptMsg);
+      if (confirmReceipt) {
+        localStorage.setItem(`received_${msg.id}`, 'true');
+        setReceivedMessages(prev => ({ ...prev, [msg.id]: true }));
+      } else {
+        return;
+      }
+    }
+
     setSelectedMessage(msg);
     
     if (activeTab === 'inbox' && !msg.is_read) {
@@ -146,12 +217,41 @@ export const MailBox: React.FC = () => {
     if (!window.confirm('هل أنت متأكد من حذف هذه الرسالة نهائياً؟')) return;
 
     try {
-      const { error } = await supabase
-        .from('mail_messages')
-        .delete()
-        .eq('id', id);
+      let deletedOnBackend = false;
+      try {
+        const response = await fetch('/api/mail/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            messageId: id, 
+            userId: userProfile?.id, 
+            userRole: userProfile?.role 
+          }),
+        });
+        
+        const data = await response.json();
+        if (response.ok && data.success) {
+          deletedOnBackend = true;
+        } else if (response.status !== 500 && data.error) {
+          // If the server specifically checked and rejected unauthorized or missing file/database, propagate that error directly
+          throw new Error(data.error);
+        }
+      } catch (beError: any) {
+        console.warn('Backend delete failed, falling back to direct supabase delete:', beError);
+        if (beError.message && !beError.message.includes('fetch')) {
+          throw beError;
+        }
+      }
 
-      if (error) throw error;
+      if (!deletedOnBackend) {
+        // Fallback to client-side direct supabase delete
+        const { error } = await supabase
+          .from('mail_messages')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+      }
 
       setMessages(prev => prev.filter(m => m.id !== id));
       if (selectedMessage?.id === id) {
@@ -160,7 +260,7 @@ export const MailBox: React.FC = () => {
       alert('تم حذف الرسالة بنجاح');
     } catch (error: any) {
       console.error('Error deleting message:', error);
-      alert('فشل حذف الرسالة: ' + error.message);
+      alert('فشل حذف الرسالة: ' + (error.message || JSON.stringify(error)));
     }
   };
 
@@ -196,7 +296,9 @@ export const MailBox: React.FC = () => {
               <Forward className="w-5 h-5" />
               إعادة توجيه
             </button>
-            {userProfile?.role === 'ADMIN' && (
+            {(userProfile?.role === 'ADMIN' || 
+              selectedMessage.sender_id === userProfile?.id || 
+              selectedMessage.receiver_dept_id === userProfile?.department_id) && (
               <button 
                 onClick={(e) => handleDeleteMessage(e, selectedMessage.id)}
                 className="flex items-center gap-2 px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors ml-4"
@@ -308,11 +410,11 @@ export const MailBox: React.FC = () => {
            )}
         </div>
 
-        <div className="flex bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl">
+        <div className="flex bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl flex-wrap gap-1 md:gap-0">
            <button
              onClick={() => setActiveTab('inbox')}
              className={cn(
-               "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all",
+               "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black transition-all",
                activeTab === 'inbox' 
                  ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm" 
                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
@@ -324,7 +426,7 @@ export const MailBox: React.FC = () => {
            <button
              onClick={() => setActiveTab('sent')}
              className={cn(
-               "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all",
+               "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black transition-all",
                activeTab === 'sent' 
                  ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm" 
                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
@@ -336,7 +438,7 @@ export const MailBox: React.FC = () => {
            <button
              onClick={() => setActiveTab('compose')}
              className={cn(
-               "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all",
+               "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black transition-all",
                activeTab === 'compose' 
                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20" 
                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
@@ -344,6 +446,18 @@ export const MailBox: React.FC = () => {
            >
              <PenSquare className="w-4 h-4" />
              رسالة جديدة
+           </button>
+           <button
+             onClick={() => setActiveTab('settings')}
+             className={cn(
+               "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black transition-all",
+               activeTab === 'settings' 
+                 ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm" 
+                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+             )}
+           >
+             <Settings className="w-4 h-4" />
+             الإعدادات
            </button>
         </div>
       </div>
@@ -469,6 +583,105 @@ export const MailBox: React.FC = () => {
               </div>
             </form>
           </div>
+        ) : activeTab === 'settings' ? (
+          <div className="max-w-2xl mx-auto space-y-8 py-4 animate-in fade-in">
+            <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-850 pb-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm">
+                <Settings className="w-6 h-6 animate-spin-slow" />
+              </div>
+              <div className="text-right">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">إعدادات البريد الداخلي</h3>
+                <p className="text-xs font-bold text-slate-500 mt-0.5">تخصيص نظام استلام وتوثيق المعاملات والرسائل الواردة</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {/* If user is an Admin, show the System-wide Mandatory Toggle */}
+              {userProfile?.role === 'ADMIN' && (
+                <div className="p-6 bg-gradient-to-br from-indigo-50/70 to-slate-50 dark:from-indigo-950/20 dark:to-slate-900/30 rounded-3xl border border-indigo-100/55 dark:border-indigo-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:shadow-md transition-all duration-300">
+                  <div className="flex-1 min-w-0 text-right">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 dark:bg-red-950/30 text-rose-650 dark:text-rose-400 text-[10px] font-black tracking-wider uppercase mb-3 border border-red-150 dark:border-red-900/30">
+                      ★ خاص بمشرف النظام (ADMIN)
+                    </span>
+                    <h4 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2 justify-end">
+                      تفعيل نظام الاستلام الإلزامي العام لجميع المستخدمين
+                    </h4>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                      عند تفعيل هذا الخيار الإداري، يصبح <strong>تأكيد الاستلام إجبارياً وإلزامياً على جميع مستخدمي النظام دون استثناء</strong>. لن يتمكن أي موظف من قراءة محتوى الكتب أو الرسائل الواردة إليه إلا بعد تأكيد استلامها رسمياً أولاً.
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center justify-end">
+                    {togglingGlobal ? (
+                      <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
+                    ) : (
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input 
+                          type="checkbox" 
+                          checked={globalMailReceiptMode} 
+                          onChange={async (e) => {
+                            setTogglingGlobal(true);
+                            try {
+                              await toggleGlobalMailReceiptMode(e.target.checked);
+                            } catch (err: any) {
+                              alert("حدث خطأ أثناء تغيير الإعداد الموحد: " + err.message);
+                            } finally {
+                              setTogglingGlobal(false);
+                            }
+                          }} 
+                          className="sr-only peer"
+                        />
+                        <div className="w-14 h-7 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-[20px] after:w-[20px] after:transition-all dark:after:bg-slate-950 dark:after:border-slate-750 peer-checked:bg-rose-650"></div>
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Individual user toggle or overridden display */}
+              <div className="p-6 bg-slate-50 dark:bg-slate-900/30 rounded-3xl border border-slate-100 dark:border-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:shadow-sm transition-all duration-300">
+                <div className="flex-1 min-w-0 text-right">
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2 justify-end">
+                    <CheckCircle2 className="w-4 h-4 text-indigo-500" />
+                    تأكيد استلام البريد قبل الفتح (إعداد شخصي)
+                  </h4>
+                  <p className="text-xs font-bold text-slate-500 mt-2 leading-relaxed">
+                    يُلزم مستلم البريد بالضغط على زر "استلام البريد" أولاً قبل السماح له بقراءة محتوى الرسالة.
+                  </p>
+                  {globalMailReceiptMode && (
+                    <div className="mt-3 p-3 bg-red-50/50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/20 text-rose-650 dark:text-rose-400 rounded-xl text-xs font-bold leading-normal">
+                      ⚠️ هذا الخيار مفعّل وإلزامي حالياً لجميع المستخدمين بقرار من إدارة النظام. تم تعطيل الإعداد الشخصي مؤقتاً.
+                    </div>
+                  )}
+                </div>
+                <div className="shrink-0 flex items-center justify-end">
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={finalReceiptMode} 
+                      disabled={globalMailReceiptMode}
+                      onChange={(e) => setMailReceiptMode(e.target.checked)} 
+                      className="sr-only peer"
+                    />
+                    <div className={cn(
+                      "w-14 h-7 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-[20px] after:w-[20px] after:transition-all dark:after:bg-slate-950 dark:after:border-slate-750 peer-checked:bg-indigo-600",
+                      globalMailReceiptMode ? "opacity-60 cursor-not-allowed" : ""
+                    )}></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Premium Info Box */}
+            <div className="p-5 bg-indigo-50/50 dark:bg-indigo-950/10 rounded-2xl border border-indigo-100/30 dark:border-indigo-900/20 text-indigo-700 dark:text-indigo-400 flex items-start gap-3 text-right">
+              <span className="text-lg">📢</span>
+              <div className="space-y-1">
+                <p className="text-xs font-black">توضيح أمان وتتبع البيانات</p>
+                <p className="text-[11px] font-medium leading-relaxed">
+                  تساهم هذه الميزة في توثيق وضمان استلام المعاملات والكتب الرسمية المرسلة بين الأقسام، بحيث لا يُعذر الموظف المستقبل بعدم الاطلاع أو الضياع بمجرد استلامه الرسمي للبريد.
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             {loading ? (
@@ -487,38 +700,47 @@ export const MailBox: React.FC = () => {
                     <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest">{activeTab === 'inbox' ? 'من (المرسل)' : 'إلى (القسم)'}</th>
                     <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest">الموضوع</th>
                     <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest">التاريخ</th>
-                    <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest text-left">حالة القراءة</th>
-                    {userProfile?.role === 'ADMIN' && (
-                      <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest text-left">الإجراءات</th>
-                    )}
+                    <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest text-left">
+                      {finalReceiptMode && activeTab === 'inbox' ? 'حالة الاستلام والوارد' : 'حالة القراءة'}
+                    </th>
+                    <th className="py-3 px-4 text-xs font-black text-slate-400 uppercase tracking-widest text-left">الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {messages.map((msg) => {
                     const isUnread = activeTab === 'inbox' && !msg.is_read;
+                    const isNotReceivedInbox = activeTab === 'inbox' && finalReceiptMode && !msg.is_read && !receivedMessages[msg.id];
                     
                     // Distinct backgrounds
                     const rowClass = cn(
                       "group cursor-pointer transition-all hover:-translate-y-0.5 shadow-sm",
-                      isUnread 
-                        ? "bg-indigo-50/95 dark:bg-indigo-950/40 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/40 shadow-[0_4px_16px_rgba(99,102,241,0.08)] font-semibold text-indigo-950 dark:text-indigo-100" 
-                        : "bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-md hover:shadow-slate-200/40 dark:hover:shadow-none text-slate-700 dark:text-slate-300"
+                      isNotReceivedInbox
+                        ? "bg-amber-50/65 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-900/15 shadow-[0_4px_12px_rgba(245,158,11,0.06)] font-semibold text-amber-950 dark:text-amber-100"
+                        : isUnread 
+                          ? "bg-indigo-50/95 dark:bg-indigo-950/40 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/40 shadow-[0_4px_16px_rgba(99,102,241,0.08)] font-semibold text-indigo-950 dark:text-indigo-100" 
+                          : "bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-md hover:shadow-slate-200/40 dark:hover:shadow-none text-slate-700 dark:text-slate-300"
                     );
 
                     // Dynamic border parameters
-                    const borderBase = isUnread
-                      ? "border-indigo-400 dark:border-indigo-500/80 border-t-2 border-b-2"
-                      : "border-slate-200 dark:border-slate-700 border-t border-b";
+                    const borderBase = isNotReceivedInbox
+                      ? "border-amber-300 dark:border-amber-900/40 border-t border-b"
+                      : isUnread
+                        ? "border-indigo-400 dark:border-indigo-500/80 border-t-2 border-b-2"
+                        : "border-slate-200 dark:border-slate-700 border-t border-b";
 
                     // The right-most corner cell (Sender info) gets rounded-r-2xl, border-y, and a thick colored indicator on the right side
-                    const rightCellBorder = isUnread
-                      ? "border-r-[6px] border-r-indigo-600 dark:border-r-indigo-500 rounded-r-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-l-0"
-                      : "border-r-[4px] border-r-slate-400 dark:border-r-slate-500 rounded-r-2xl border-y border-slate-200 dark:border-slate-700 border-l-0";
+                    const rightCellBorder = isNotReceivedInbox
+                      ? "border-r-[6px] border-r-amber-500 dark:border-r-amber-600 rounded-r-2xl border-y border-amber-300 dark:border-amber-900/40 border-l-0"
+                      : isUnread
+                        ? "border-r-[6px] border-r-indigo-600 dark:border-r-indigo-500 rounded-r-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-l-0"
+                        : "border-r-[4px] border-r-slate-400 dark:border-r-slate-500 rounded-r-2xl border-y border-slate-200 dark:border-slate-700 border-l-0";
 
                     // The left-most corner cell (either Status or Delete operations) gets rounded-l-2xl and a solid left border
-                    const leftCellBorder = isUnread
-                      ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500/80 rounded-l-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-r-0"
-                      : "border-l border-l-slate-200 dark:border-l-slate-700 rounded-l-2xl border-y border-slate-200 dark:border-slate-700 border-r-0";
+                    const leftCellBorder = isNotReceivedInbox
+                      ? "border-l border-l-amber-305 dark:border-l-amber-900/40 rounded-l-2xl border-y border-amber-300 dark:border-amber-900/40 border-r-0"
+                      : isUnread
+                        ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500/80 rounded-l-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-r-0"
+                        : "border-l border-l-slate-200 dark:border-l-slate-700 rounded-l-2xl border-y border-slate-200 dark:border-slate-700 border-r-0";
 
                     return (
                       <tr 
@@ -530,16 +752,18 @@ export const MailBox: React.FC = () => {
                           <div className="flex items-center gap-3">
                             <div className={cn(
                               "w-8 h-8 rounded-full flex items-center justify-center transition-all",
-                              isUnread 
-                                ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 scale-105" 
-                                : activeTab === 'inbox' 
-                                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" 
-                                  : "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
+                              isNotReceivedInbox
+                                ? "bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 scale-105"
+                                : isUnread 
+                                  ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 scale-105" 
+                                  : activeTab === 'inbox' 
+                                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" 
+                                    : "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
                             )}>
-                              {isUnread ? <Mail className="w-5 h-5 animate-pulse" /> : activeTab === 'inbox' ? <UserCircle className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+                              {isNotReceivedInbox ? <Mail className="w-5 h-5 animate-bounce text-amber-500" /> : isUnread ? <Mail className="w-5 h-5 animate-pulse" /> : activeTab === 'inbox' ? <UserCircle className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
                             </div>
                             <div>
-                              <span className={cn("text-sm block transition-colors", isUnread ? "font-black text-indigo-900 dark:text-indigo-100" : "text-slate-900 dark:text-white")}>
+                              <span className={cn("text-sm block transition-colors", isNotReceivedInbox ? "font-bold text-amber-900 dark:text-amber-200" : isUnread ? "font-black text-indigo-900 dark:text-indigo-100" : "text-slate-900 dark:text-white")}>
                                 {activeTab === 'inbox' 
                                   ? (msg.sender?.full_name || msg.sender?.email || 'غير معروف')
                                   : msg.receiver_dept?.name || 'غير معروف'
@@ -551,7 +775,7 @@ export const MailBox: React.FC = () => {
                         </td>
                         <td className={cn("px-4 py-4 transition-all", borderBase)}>
                           <div className="flex items-center gap-2">
-                            <span className={cn("text-sm max-w-md truncate transition-all", isUnread ? "font-black text-slate-950 dark:text-white" : "text-slate-700 dark:text-slate-300")}>
+                            <span className={cn("text-sm max-w-md truncate transition-all", isNotReceivedInbox ? "font-bold text-amber-950 dark:text-amber-100" : isUnread ? "font-black text-slate-950 dark:text-white" : "text-slate-700 dark:text-slate-300")}>
                               {msg.subject}
                             </span>
                             {msg.attachments && msg.attachments.length > 0 && (
@@ -560,19 +784,46 @@ export const MailBox: React.FC = () => {
                           </div>
                         </td>
                         <td className={cn("px-4 py-4 transition-all", borderBase)}>
-                          <span className={cn("text-xs font-mono transition-colors", isUnread ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-500")}>
+                          <span className={cn("text-xs font-mono transition-colors", isNotReceivedInbox ? "text-amber-600 dark:text-amber-400 font-semibold" : isUnread ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-500")}>
                             {formatDateTime(msg.created_at)}
                           </span>
                         </td>
                         <td className={cn(
                           "px-4 py-4 text-left transition-all",
-                          userProfile?.role === 'ADMIN' ? borderBase : leftCellBorder
+                          borderBase
                         )}>
                           {msg.is_read ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] uppercase font-black tracking-widest">
-                              <MailOpen className="w-3.5 h-3.5" />
-                              مقروء
-                            </span>
+                            finalReceiptMode ? (
+                              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-55 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 text-[10px] uppercase font-black border border-emerald-200 dark:border-emerald-800/40">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                بريد مستلم ✓
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] uppercase font-black tracking-widest">
+                                <MailOpen className="w-3.5 h-3.5" />
+                                مقروء
+                              </span>
+                            )
+                          ) : finalReceiptMode && activeTab === 'inbox' ? (
+                            receivedMessages[msg.id] ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/25 text-violet-600 dark:text-violet-400 text-[10px] uppercase font-black border border-violet-200 dark:border-violet-800/30">
+                                <MailOpen className="w-3.5 h-3.5" />
+                                مستلم (جاهز للقراءة)
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/25 text-amber-600 dark:text-amber-400 text-[10px] uppercase font-black border border-amber-200/50 dark:border-amber-800/40">
+                                  بانتظار الاستلام
+                                </span>
+                                <button
+                                  onClick={(e) => handleAcknowledgeReceipt(e, msg.id)}
+                                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-[11px] font-black shadow-md hover:shadow-indigo-500/15 duration-200 scale-100 hover:scale-[1.03] active:scale-95 transition-all text-center"
+                                >
+                                  <Mail className="w-3.5 h-3.5 text-white" />
+                                  استلام البريد 📥
+                                </button>
+                              </div>
+                            )
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[11px] uppercase font-black tracking-widest border border-indigo-200 dark:border-indigo-800/50 shadow-sm animate-pulse">
                               <Mail className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -580,8 +831,10 @@ export const MailBox: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        {userProfile?.role === 'ADMIN' && (
-                          <td className={cn("px-4 py-4 text-left transition-all", leftCellBorder)}>
+                        <td className={cn("px-4 py-4 text-left transition-all", leftCellBorder)}>
+                          {(userProfile?.role === 'ADMIN' || 
+                            msg.sender_id === userProfile?.id || 
+                            msg.receiver_dept_id === userProfile?.department_id) ? (
                             <button 
                               onClick={(e) => handleDeleteMessage(e, msg.id)}
                               className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
@@ -589,8 +842,10 @@ export const MailBox: React.FC = () => {
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>
-                          </td>
-                        )}
+                          ) : (
+                            <span className="text-xs text-slate-300 dark:text-slate-600">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}

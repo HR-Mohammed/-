@@ -11,17 +11,21 @@
 }
 
 /* Enable class-based dark mode for Tailwind 4 */
-@custom-variant dark (&:where(.dark, .dark *));
+@variant dark (&:where(.dark, .dark *));
 
 @layer base {
   body {
-    @apply bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-50 via-slate-100 to-indigo-50/10 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900 transition-all duration-500 min-h-screen relative;
+    background-color: #f8fafc;
+    background-image: radial-gradient(at top right, #f8fafc 0%, #f1f5f9 60%, #e0e7ff 100%);
+    @apply text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900 transition-all duration-500 min-h-screen relative;
     font-family: "IBM Plex Sans Arabic", sans-serif;
    }
 
   /* Robust dark mode body background style */
   .dark body {
-    @apply bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-950 via-slate-950 to-indigo-950/20 text-slate-100;
+    background-color: #0b0f19;
+    background-image: radial-gradient(at top right, #0e1424 0%, #05070f 60%, #17153a 100%);
+    @apply text-slate-100;
   }
 
   /* Custom high-end scrollbars */

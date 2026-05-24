@@ -10,6 +10,7 @@ interface DocumentContextType {
   userProfile: UserProfile | null;
   internalDepartments: InternalDepartment[];
   isGoogleDriveConnected: boolean;
+  globalMailReceiptMode: boolean;
   connectGoogleDrive: () => Promise<void>;
   addDocument: (doc: Omit<OfficialDocument, 'id' | 'history' | 'createdAt'>) => Promise<void>;
   updateDocumentStatus: (id: string, status: DocumentStatus, action: string, notes: string, user: string, attachments?: DocumentAttachment[]) => Promise<void>;
@@ -22,6 +23,7 @@ interface DocumentContextType {
   fetchAllProfiles: () => Promise<UserProfile[]>;
   addInternalDepartment: (name: string) => Promise<void>;
   deleteInternalDepartment: (id: string) => Promise<void>;
+  toggleGlobalMailReceiptMode: (enabled: boolean) => Promise<void>;
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined);
@@ -29,6 +31,7 @@ const DocumentContext = createContext<DocumentContextType | undefined>(undefined
 export const DocumentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [documents, setDocuments] = useState<OfficialDocument[]>([]);
   const [internalDepartments, setInternalDepartments] = useState<InternalDepartment[]>([]);
+  const [globalMailReceiptMode, setGlobalMailReceiptMode] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
@@ -58,9 +61,53 @@ export const DocumentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         throw error;
       }
-      setInternalDepartments(data || []);
+      const raw = data || [];
+      const depts = raw.filter((d: any) => d && d.name && !d.name.startsWith('__SYSTEM_SETTING_'));
+      setInternalDepartments(depts);
+
+      const setting = raw.find((d: any) => d && d.name && d.name.startsWith('__SYSTEM_SETTING_MAIL_RECEIPT:'));
+      if (setting) {
+        setGlobalMailReceiptMode(setting.name.split(':')[1] === 'true');
+      } else {
+        setGlobalMailReceiptMode(false);
+      }
     } catch (error) {
       console.error('Error fetching internal departments:', error);
+    }
+  };
+
+  const toggleGlobalMailReceiptMode = async (enabled: boolean) => {
+    try {
+      // 1. Fetch current rows to find any settings
+      const { data, error: selectError } = await supabase
+        .from('internal_departments')
+        .select('*');
+
+      if (selectError) throw selectError;
+
+      const prefix = '__SYSTEM_SETTING_MAIL_RECEIPT:';
+      const existingSettings = (data || []).filter((d: any) => d && d.name && d.name.startsWith(prefix));
+
+      // 2. Delete existing
+      for (const setting of existingSettings) {
+        await supabase
+          .from('internal_departments')
+          .delete()
+          .eq('id', setting.id);
+      }
+
+      // 3. Insert new setting
+      const newValue = `${prefix}${enabled}`;
+      const { error: insertError } = await supabase
+        .from('internal_departments')
+        .insert([{ name: newValue }]);
+
+      if (insertError) throw insertError;
+
+      setGlobalMailReceiptMode(enabled);
+    } catch (error) {
+      console.error('Error toggling global mail receipt mode:', error);
+      throw error;
     }
   };
 
@@ -514,6 +561,7 @@ export const DocumentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       userProfile,
       internalDepartments,
       isGoogleDriveConnected, 
+      globalMailReceiptMode,
       connectGoogleDrive, 
       addDocument, 
       updateDocumentStatus, 
@@ -525,7 +573,8 @@ export const DocumentProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updateUserProfile, 
       fetchAllProfiles,
       addInternalDepartment,
-      deleteInternalDepartment
+      deleteInternalDepartment,
+      toggleGlobalMailReceiptMode
     }}>
       {children}
     </DocumentContext.Provider>

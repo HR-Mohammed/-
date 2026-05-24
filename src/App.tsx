@@ -10,6 +10,7 @@ import { UserManager } from './components/UserManager';
 import { DepartmentManager } from './components/DepartmentManager';
 import { MailBox } from './components/MailBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { SystemSettings } from './components/SystemSettings';
 import { useDocuments } from './context/DocumentContext';
 import { supabase } from './lib/supabase';
 import { Search, AlertTriangle, X, Bell, User, Menu, LogOut, Moon, Sun, KeyRound } from 'lucide-react';
@@ -186,6 +187,9 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
     }
     if (currentView === 'mailbox') {
       return <MailBox />;
+    }
+    if (currentView === 'system-settings') {
+      return <SystemSettings />;
     }
     if (currentView === 'document-details' && editingDocId) {
       return (
