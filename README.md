@@ -1,75 +1,20 @@
-# 🏢 نظام الإدارة والمتابعة (Management and Follow-up System)
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-تم بناء وتطوير هذا النظام المتقدم باستخدام **React (TypeScript)** و **Vite** مدمجاً مع خادم **Express** ويسعفك في إدارة وتتبع الكتب الرسمية والمراسلات والبريد الداخلي بالكامل، مع تزويد لوحة المشرفين بميزات مخصصة لتصفير وتنظيف البيانات.
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## 🚀 كيف تجد وتصدر مشروعك إلى GitHub؟ (How to find and export your project to GitHub)
+View your app in AI Studio: https://ai.studio/apps/69be2a87-1bdc-4dc3-9669-1b6e4355f1b7
 
-يمكنك بسهولة ربط ونشر مشروعك على حسابك في **GitHub** مباشرة من واجهة **Google AI Studio** باتباع الخطوات التالية:
+## Run Locally
 
-1. **افتح قائمة الإعدادات (Settings Menu):**
-   في أعلى الزاوية اليسرى أو اليمنى من واجهة منصة Google AI Studio (بجانب زر المشاركة والنشر)، اضغط على أيقونة الإعدادات (الترس ⚙).
-2. **اختر التصدير إلى GitHub (Export to GitHub):**
-   انقر فوق خيار **"Export to GitHub"** (أو **"تصدير إلى GitHub"**).
-3. **تفويض الحساب وزر النشر:**
-   سيطلب منك التطبيق تسجيل الدخول بحسابك على GitHub وتفويض الصلاحيات، بعدها سيتم إنشاء مستودع (Repository) خاص بمشروعك آلياً يحتوي على كافة الكود البرمجي والإعدادات الجاهزة للتشغيل!
+**Prerequisites:**  Node.js
 
----
 
-## 🛠️ تهيئة المتغيرات البيئية (Environment Variables Setup)
-
-لكي يعمل النظام بكفاءة تامة وتعمل ميزة الحذف وتصفير البريد، يجب إنشاء ملف `.env` في المجلد الرئيسي للمشروع وإضافة المتغيرات التالية:
-
-```env
-# رابط قاعدة بيانات Supabase ومفتاح الوصول العام
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_public_key
-
-# مفتاح Role الخدمي لتفعيل ميزة تصفير وحذف رسائل البريد للمستخدمين (مهم جداً!)
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# إعدادات ربط Google Drive و OAuth (اختياري لربط المستندات)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-APP_URL=https://your-deployment-url.run.app
-```
-
-> ⚠️ **ملاحظة أمنية:** لا تقم برفع ملف `.env` الفعلي إلى مستودع GitHub أبداً؛ تم إضافة الملف بالفعل إلى قائمة التجاهل `.gitignore` لحماية بياناتك ومفاتيحك السرية.
-
----
-
-## 📦 التشغيل المحلي والتثبيت (Local Development & Execution)
-
-### 1. تثبيت الحزم والاعتمادات
-استخدم مدير الحزم لتثبيت المتغيرات:
-```bash
-npm install
-```
-
-### 2. تشغيل النظام في وضع التطوير (Development Mode)
-يتم تشغيل كل من خادم الواجهة (Vite) والخادم الخلفي (Express API) سوياً باستخدام الأمر:
-```bash
-npm run dev
-```
-سيكون التطبيق متاحاً على الرابط المحلي: `http://localhost:3000`.
-
-### 3. بناء النظام للإنتاج (Build for Production)
-لبناء المشروع وتجهيزه لبيئة الإنتاج:
-```bash
-npm run build
-```
-
-### 4. تشغيل منصة الإنتاج (Production execution)
-بعد البناء، يمكنك البدء في تشغيل النظام:
-```bash
-npm run start
-```
-
----
-
-## ✨ ميزات النظام المهيأة للنشر (System Core Features)
-* **إرسال واستقبال البريد الداخلي:** نظام مراسلات مدمج مع دعم إرسال المعاملات والمرفقات الرسمية بين الأقسام.
-* **إدارة كاملة للصلاحيات:** لوحة تحكم مخصصة للمشرفين (ADMIN) لإدارة المستخدمين والأقسام وتتبع الأثر.
-* **لوحة تصفير رسائل البريد:** تتيح لمسؤول النظام في قسم "إعدادات النظام" إمكانية تفريغ وتصفير كافة الرسائل لجميع المستخدمين بضغطة زر واحدة (تصفير كلي أو حصر المسح بنطاق زمني/فترة محددة).
-* **دعم الماسح الضوئي (Scanner):** تحويل وتعديل المستندات الورقية عبر كاميرا الجهاز مدمجة بنظام المسح.
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

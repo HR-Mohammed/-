@@ -2,5 +2,5 @@
   "name": "نظام الادارة والمتابعة",
   "description": "نظام لتتبع وإدارة الكتب الرسمية الصادرة والواردة، متابعة الإنجاز، وتوجيهها للأقسام المختصة.",
   "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
