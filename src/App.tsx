@@ -9,9 +9,10 @@ import { LoginPage } from './components/LoginPage';
 import { UserManager } from './components/UserManager';
 import { DepartmentManager } from './components/DepartmentManager';
 import { MailBox } from './components/MailBox';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { useDocuments } from './context/DocumentContext';
 import { supabase } from './lib/supabase';
-import { Search, AlertTriangle, X, Bell, User, Menu, LogOut, Moon, Sun } from 'lucide-react';
+import { Search, AlertTriangle, X, Bell, User, Menu, LogOut, Moon, Sun, KeyRound } from 'lucide-react';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Session } from '@supabase/supabase-js';
@@ -26,8 +27,25 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
   const [unreadMailCount, setUnreadMailCount] = useState(0);
   const [notifications, setNotifications] = useState<{id: string, subject: string, time: Date, read: boolean}[]>([]);
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [defaultDocType, setDefaultDocType] = useState<'INCOMING' | 'OUTGOING'>('INCOMING');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_collapsed');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed));
+    } catch (e) {
+      console.warn('Storage failed:', e);
+    }
+  }, [isSidebarCollapsed]);
   
   const user = session.user;
   const userInitials = userName 
@@ -198,7 +216,7 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 overflow-x-hidden transition-colors duration-300" dir="rtl">
+    <div className="min-h-screen bg-transparent flex flex-col lg:flex-row gap-4 p-4 lg:p-6 overflow-x-hidden transition-colors duration-300" dir="rtl">
       {/* Mobile Menu Backdrop */}
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -214,7 +232,8 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
 
       {/* Dynamic Nav Sidebar */}
       <div className={cn(
-        "fixed inset-y-0 right-0 z-[90] w-80 transform transition-transform duration-500 lg:relative lg:inset-auto lg:transform-none lg:w-80",
+        "fixed inset-y-0 right-0 z-[90] transform transition-all duration-300 lg:relative lg:inset-auto lg:transform-none",
+        isSidebarCollapsed ? "w-80 lg:w-24" : "w-80 lg:w-80",
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
       )}>
         <Sidebar 
@@ -226,6 +245,8 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
           }} 
           onLogout={handleLogout}
           unreadMailCount={unreadMailCount}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
       </div>
 
@@ -388,8 +409,16 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
             </div>
 
             <button 
+              onClick={() => setShowPasswordModal(true)}
+              className="flex p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all group"
+              title="تغيير كلمة المرور"
+            >
+              <KeyRound className="w-5 h-5" />
+            </button>
+
+            <button 
               onClick={handleLogout}
-              className="hidden sm:flex p-2.5 rounded-2xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-all group"
+              className="flex p-2.5 rounded-2xl hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-400 hover:text-rose-600 transition-all group"
               title="تسجيل الخروج"
             >
               <LogOut className="w-5 h-5" />
@@ -491,6 +520,11 @@ function AppContent({ session, isDarkMode, setIsDarkMode }: { session: Session, 
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Change Password Modal */}
+        <ChangePasswordModal 
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+        />
       </main>
     </div>
   );

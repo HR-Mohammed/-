@@ -143,6 +143,28 @@ app.post("/api/drive/upload", async (req, res) => {
   }
 });
 
+app.post("/api/admin/update-password", async (req, res) => {
+  const { userId, newPassword } = req.body;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: "الرجاء إضافة SUPABASE_SERVICE_ROLE_KEY في المتغيرات البيئية للمشروع لتفعيل هذه الميزة (Settings -> Environment Variables)" });
+  }
+
+  try {
+    const adminSupabase = createClient(process.env.VITE_SUPABASE_URL || "", serviceRoleKey);
+    const { data, error } = await adminSupabase.auth.admin.updateUserById(userId, { password: newPassword });
+    
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function startServer() {
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error(err);

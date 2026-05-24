@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDocuments } from '../context/DocumentContext';
 import { supabase } from '../lib/supabase';
 import { MailMessage, DocumentAttachment } from '../types';
-import { Mail, Send, Inbox, PenSquare, ArrowRight, UserCircle, Building2, Clock, CheckCircle2, MailOpen, Paperclip, X as XIcon, File, Image as ImageIcon, FileText, FileArchive, Upload, HardDrive, Trash2 } from 'lucide-react';
+import { Mail, Send, Inbox, PenSquare, ArrowRight, UserCircle, Building2, Clock, CheckCircle2, MailOpen, Paperclip, X as XIcon, File, Image as ImageIcon, FileText, FileArchive, Upload, HardDrive, Trash2, Forward } from 'lucide-react';
 import { cn, formatDateTime, formatFileSize } from '../lib/utils';
 
 export const MailBox: React.FC = () => {
@@ -164,6 +164,15 @@ export const MailBox: React.FC = () => {
     }
   };
 
+  const handleForwardMessage = (msg: MailMessage) => {
+    setComposeSubject(`إعادة توجيه: ${msg.subject}`);
+    setComposeContent(`\n\n---------- رسالة محولة ----------\nمن: ${msg.sender?.full_name || msg.sender?.email}\nبتاريخ: ${formatDateTime(msg.created_at)}\nالموضوع: ${msg.subject}\n\n${msg.content}`);
+    setAttachments(msg.attachments || []);
+    setComposeTo('');
+    setActiveTab('compose');
+    setSelectedMessage(null);
+  };
+
   const renderFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-8 h-8 text-indigo-500" />;
     if (type === 'application/pdf') return <FileText className="w-8 h-8 text-rose-500" />;
@@ -180,6 +189,13 @@ export const MailBox: React.FC = () => {
              <p className="text-sm font-bold text-slate-500 mt-1">عرض تفاصيل الرسالة</p>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => handleForwardMessage(selectedMessage)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+            >
+              <Forward className="w-5 h-5" />
+              إعادة توجيه
+            </button>
             {userProfile?.role === 'ADMIN' && (
               <button 
                 onClick={(e) => handleDeleteMessage(e, selectedMessage.id)}
@@ -478,78 +494,106 @@ export const MailBox: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {messages.map((msg) => (
-                    <tr 
-                      key={msg.id} 
-                      onClick={() => handleViewMessage(msg)}
-                      className={cn(
-                        "group cursor-pointer transition-all hover:-translate-y-0.5",
-                        activeTab === 'inbox' && !msg.is_read 
-                          ? "bg-indigo-50/50 dark:bg-indigo-900/20 font-black" 
-                          : "bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:shadow-lg shadow-slate-200/50 dark:shadow-none"
-                      )}
-                    >
-                      <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 dark:border-white/5">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center",
-                            activeTab === 'inbox' ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
-                          )}>
-                            {activeTab === 'inbox' ? <UserCircle className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+                  {messages.map((msg) => {
+                    const isUnread = activeTab === 'inbox' && !msg.is_read;
+                    
+                    // Distinct backgrounds
+                    const rowClass = cn(
+                      "group cursor-pointer transition-all hover:-translate-y-0.5 shadow-sm",
+                      isUnread 
+                        ? "bg-indigo-50/95 dark:bg-indigo-950/40 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/40 shadow-[0_4px_16px_rgba(99,102,241,0.08)] font-semibold text-indigo-950 dark:text-indigo-100" 
+                        : "bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-md hover:shadow-slate-200/40 dark:hover:shadow-none text-slate-700 dark:text-slate-300"
+                    );
+
+                    // Dynamic border parameters
+                    const borderBase = isUnread
+                      ? "border-indigo-400 dark:border-indigo-500/80 border-t-2 border-b-2"
+                      : "border-slate-200 dark:border-slate-700 border-t border-b";
+
+                    // The right-most corner cell (Sender info) gets rounded-r-2xl, border-y, and a thick colored indicator on the right side
+                    const rightCellBorder = isUnread
+                      ? "border-r-[6px] border-r-indigo-600 dark:border-r-indigo-500 rounded-r-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-l-0"
+                      : "border-r-[4px] border-r-slate-400 dark:border-r-slate-500 rounded-r-2xl border-y border-slate-200 dark:border-slate-700 border-l-0";
+
+                    // The left-most corner cell (either Status or Delete operations) gets rounded-l-2xl and a solid left border
+                    const leftCellBorder = isUnread
+                      ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500/80 rounded-l-2xl border-y-2 border-indigo-400 dark:border-indigo-500/80 border-r-0"
+                      : "border-l border-l-slate-200 dark:border-l-slate-700 rounded-l-2xl border-y border-slate-200 dark:border-slate-700 border-r-0";
+
+                    return (
+                      <tr 
+                        key={msg.id} 
+                        onClick={() => handleViewMessage(msg)}
+                        className={rowClass}
+                      >
+                        <td className={cn("px-4 py-4 transition-all", rightCellBorder)}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                              isUnread 
+                                ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 scale-105" 
+                                : activeTab === 'inbox' 
+                                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" 
+                                  : "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
+                            )}>
+                              {isUnread ? <Mail className="w-5 h-5 animate-pulse" /> : activeTab === 'inbox' ? <UserCircle className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <span className={cn("text-sm block transition-colors", isUnread ? "font-black text-indigo-900 dark:text-indigo-100" : "text-slate-900 dark:text-white")}>
+                                {activeTab === 'inbox' 
+                                  ? (msg.sender?.full_name || msg.sender?.email || 'غير معروف')
+                                  : msg.receiver_dept?.name || 'غير معروف'
+                                }
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-normal">{activeTab === 'inbox' ? msg.sender?.role : 'القسم'}</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-sm text-slate-900 dark:text-white block">
-                              {activeTab === 'inbox' 
-                                ? (msg.sender?.full_name || msg.sender?.email || 'غير معروف')
-                                : msg.receiver_dept?.name || 'غير معروف'
-                              }
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-normal">{activeTab === 'inbox' ? msg.sender?.role : 'القسم'}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100 dark:border-white/5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-slate-900 dark:text-white max-w-md truncate">
-                            {msg.subject}
-                          </span>
-                          {msg.attachments && msg.attachments.length > 0 && (
-                            <Paperclip className="w-4 h-4 text-slate-400" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 border-y border-slate-100 dark:border-white/5">
-                        <span className="text-xs font-mono text-slate-500">{formatDateTime(msg.created_at)}</span>
-                      </td>
-                      <td className={cn(
-                        "px-4 py-4 border-y border-slate-100 dark:border-white/5 text-left",
-                        userProfile?.role !== 'ADMIN' && "rounded-l-2xl border-l"
-                      )}>
-                        {msg.is_read ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] uppercase font-black tracking-widest">
-                            <MailOpen className="w-3.5 h-3.5" />
-                            مقروء
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[10px] uppercase font-black tracking-widest">
-                            <Mail className="w-3.5 h-3.5" />
-                            غير مقروء
-                          </span>
-                        )}
-                      </td>
-                      {userProfile?.role === 'ADMIN' && (
-                        <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100 dark:border-white/5 text-left">
-                          <button 
-                            onClick={(e) => handleDeleteMessage(e, msg.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
-                            title="حذف الرسالة"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className={cn("px-4 py-4 transition-all", borderBase)}>
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm max-w-md truncate transition-all", isUnread ? "font-black text-slate-950 dark:text-white" : "text-slate-700 dark:text-slate-300")}>
+                              {msg.subject}
+                            </span>
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <Paperclip className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                        </td>
+                        <td className={cn("px-4 py-4 transition-all", borderBase)}>
+                          <span className={cn("text-xs font-mono transition-colors", isUnread ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-slate-500")}>
+                            {formatDateTime(msg.created_at)}
+                          </span>
+                        </td>
+                        <td className={cn(
+                          "px-4 py-4 text-left transition-all",
+                          userProfile?.role === 'ADMIN' ? borderBase : leftCellBorder
+                        )}>
+                          {msg.is_read ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] uppercase font-black tracking-widest">
+                              <MailOpen className="w-3.5 h-3.5" />
+                              مقروء
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[11px] uppercase font-black tracking-widest border border-indigo-200 dark:border-indigo-800/50 shadow-sm animate-pulse">
+                              <Mail className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                              غير مقروء
+                            </span>
+                          )}
+                        </td>
+                        {userProfile?.role === 'ADMIN' && (
+                          <td className={cn("px-4 py-4 text-left transition-all", leftCellBorder)}>
+                            <button 
+                              onClick={(e) => handleDeleteMessage(e, msg.id)}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
+                              title="حذف الرسالة"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

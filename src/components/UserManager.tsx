@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useDocuments } from '../context/DocumentContext';
 import { UserProfile, UserRole } from '../types';
-import { Users, Shield, UserCog, Check, Loader2, Search, Plus, X, Mail, Lock, Edit2, Save } from 'lucide-react';
+import { Users, Shield, UserCog, Check, Loader2, Search, Plus, X, Mail, Lock, Edit2, Save, KeyRound } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // خاص لإنشاء مستخدمين دون الخروج من حساب المسؤول
@@ -31,6 +31,14 @@ export const UserManager: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Admin Change Password state
+  const [showAdminPasswordModal, setShowAdminPasswordModal] = useState(false);
+  const [changingPasswordUser, setChangingPasswordUser] = useState<UserProfile | null>(null);
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [adminPasswordLoading, setAdminPasswordLoading] = useState(false);
+  const [adminPasswordError, setAdminPasswordError] = useState<string | null>(null);
+  const [adminPasswordSuccess, setAdminPasswordSuccess] = useState(false);
 
   useEffect(() => {
     loadProfiles();
@@ -116,6 +124,39 @@ export const UserManager: React.FC = () => {
       alert('خطأ في تحديث الاسم: ' + (error.message || 'فشل الاتصال بقاعدة البيانات'));
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const handleAdminChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changingPasswordUser) return;
+    setAdminPasswordLoading(true);
+    setAdminPasswordError(null);
+    setAdminPasswordSuccess(false);
+
+    try {
+      const response = await fetch('/api/admin/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: changingPasswordUser.id, newPassword: adminNewPassword }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'فشل تغيير كلمة المرور');
+      }
+
+      setAdminPasswordSuccess(true);
+      setTimeout(() => {
+        setShowAdminPasswordModal(false);
+        setAdminNewPassword('');
+        setAdminPasswordSuccess(false);
+        setChangingPasswordUser(null);
+      }, 2000);
+    } catch (err: any) {
+      setAdminPasswordError(err.message || 'حدث خطأ غير متوقع');
+    } finally {
+      setAdminPasswordLoading(false);
     }
   };
 
@@ -390,6 +431,16 @@ export const UserManager: React.FC = () => {
                           </select>
                           <UserCog className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-500 pointer-events-none" />
                         </div>
+                        <button
+                          onClick={() => {
+                            setChangingPasswordUser(profile);
+                            setShowAdminPasswordModal(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+                          title="تغيير كلمة المرور"
+                        >
+                          <KeyRound className="w-5 h-5" />
+                        </button>
                         {updatingId === profile.id && (
                           <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
                         )}
@@ -402,6 +453,99 @@ export const UserManager: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Admin Change Password Modal */}
+      {showAdminPasswordModal && changingPasswordUser && (
+        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6 transition-colors">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-md shadow-2xl shadow-indigo-900/20 dark:shadow-none overflow-hidden relative transition-colors">
+            <button 
+              onClick={() => {
+                setShowAdminPasswordModal(false);
+                setChangingPasswordUser(null);
+                setAdminNewPassword('');
+                setAdminPasswordError(null);
+              }}
+              className="absolute top-8 left-8 p-2 text-slate-300 dark:text-slate-600 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="p-10">
+              <div className="mb-8">
+                <div className="flex items-center gap-4 mb-2">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center">
+                    <KeyRound className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">إعادة تعيين كلمة المرور</h3>
+                  </div>
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 font-bold mt-2">
+                  للمستخدم: <span className="text-indigo-600 dark:text-indigo-400">{changingPasswordUser.full_name || changingPasswordUser.email}</span>
+                </p>
+              </div>
+
+              <form onSubmit={handleAdminChangePassword} className="space-y-6">
+                {adminPasswordError && (
+                  <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 rounded-2xl text-xs font-bold text-center">
+                    {adminPasswordError}
+                  </div>
+                )}
+                
+                {adminPasswordSuccess && (
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-2xl text-xs font-bold text-center flex flex-col gap-2 items-center">
+                    <Check className="w-5 h-5" />
+                    تم تحديث كلمة المرور بنجاح!
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mr-2">كلمة المرور الجديدة</label>
+                  <div className="relative">
+                    <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={adminNewPassword}
+                      onChange={(e) => setAdminNewPassword(e.target.value)}
+                      disabled={adminPasswordLoading || adminPasswordSuccess}
+                      className="w-full pr-12 pl-4 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 dark:focus:border-indigo-500/50 outline-none transition-all font-bold text-slate-900 dark:text-white"
+                      placeholder="••••••••"
+                      dir="ltr"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 mr-2">يجب أن تتكون من 6 أحرف على الأقل</p>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    disabled={adminPasswordLoading || adminPasswordSuccess || adminNewPassword.length < 6}
+                    className="flex-1 py-4 bg-indigo-600 text-white font-black text-sm rounded-2xl hover:bg-slate-900 dark:hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {adminPasswordLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    تحديث كلمة المرور
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAdminPasswordModal(false);
+                      setChangingPasswordUser(null);
+                      setAdminNewPassword('');
+                      setAdminPasswordError(null);
+                    }}
+                    disabled={adminPasswordLoading}
+                    className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black text-sm rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
